@@ -17,4 +17,5 @@ class Settings(BaseSettings):
         env_prefix="TEMPLATE_"  # Prefisso di tutte le variabili (es. TEMPLATE_DATABASE_URL)
     )
 
+
 settings = Settings()

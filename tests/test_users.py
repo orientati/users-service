@@ -9,6 +9,7 @@ def test_create_user(client):
     assert data["full_name"] == "Test User"
     assert "id" in data  # controllo che l'utente abbia un ID
 
+
 def test_read_users(client):
     # creo prima un utente
     client.post(
