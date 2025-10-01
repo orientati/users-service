@@ -78,3 +78,12 @@ def change_user_password(db: Session, user_id: int, old_password: str, new_passw
     user.hashed_password = new_password
     db.commit()
     return True
+
+
+def delete_user(db: Session, user_id: int) -> bool:
+    user = db.get(User, user_id)
+    if not user:
+        return False
+    db.delete(user)
+    db.commit()
+    return True

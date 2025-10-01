@@ -160,6 +160,7 @@ def test_change_password_success(db_session):
     result = change_user_password(db_session, req.user_id, req.old_password, req.new_password)
     assert result is True
 
+
 def test_change_password_wrong_old_password(db_session):
     payload = UserCreate(
         username="pwuser2",
@@ -181,6 +182,7 @@ def test_change_password_wrong_old_password(db_session):
     result = change_user_password(db_session, req.user_id, req.old_password, req.new_password)
     assert result is False
 
+
 def test_change_password_user_not_found(db_session):
     from app.schemas.user import ChangePasswordRequest
     from app.services.user_service import change_user_password
@@ -191,4 +193,27 @@ def test_change_password_user_not_found(db_session):
         new_password="irrelevant"
     )
     result = change_user_password(db_session, req.user_id, req.old_password, req.new_password)
+    assert result is False
+
+
+def test_delete_user_success(db_session):
+    # Crea un utente da eliminare
+    payload = UserCreate(
+        username="todelete",
+        hashed_password="pass",
+        email="todelete@gaga.com",
+        name="To",
+        surname="Delete"
+    )
+    user = create_user(db_session, payload)
+
+    from app.services.user_service import delete_user, get_user
+    result = delete_user(db_session, user.id)
+    assert result is True
+    assert get_user(db_session, user.id) is None
+
+
+def test_delete_user_not_found(db_session):
+    from app.services.user_service import delete_user
+    result = delete_user(db_session, 99999)
     assert result is False
