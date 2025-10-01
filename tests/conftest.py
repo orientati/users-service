@@ -2,19 +2,25 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from alembic import command
+from alembic.config import Config
 
 from app.api.deps import get_db
-from app.db.base import Base
 from app.main import app
 
-# DB in memoria per i test
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-# Override della dipendenza get_db per i test
+def apply_migrations():
+    alembic_cfg = Config("alembic.ini")
+    alembic_cfg.set_main_option("sqlalchemy.url", SQLALCHEMY_DATABASE_URL)
+    command.upgrade(alembic_cfg, "head")
+
+
+
 def override_get_db():
     db = TestingSessionLocal()
     try:
@@ -26,10 +32,12 @@ def override_get_db():
 app.dependency_overrides[get_db] = override_get_db
 
 
+from sqlalchemy import inspect
+
 @pytest.fixture(scope="function")
 def client():
-    # Ricrea le tabelle per ogni test
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    apply_migrations()
+    inspector = inspect(engine)
+    print("Tabelle presenti nel DB di test:", inspector.get_table_names())
     with TestClient(app) as c:
         yield c
