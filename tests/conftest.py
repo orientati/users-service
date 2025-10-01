@@ -1,43 +1,29 @@
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from alembic import command
-from alembic.config import Config
+from sqlalchemy.orm import sessionmaker, clear_mappers
 
-from app.api.deps import get_db
-from app.main import app
+from app.db.base import Base
+from app.models.user import User
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+# Database in-memory per test
+TEST_DATABASE_URL = "sqlite+pysqlite:///:memory:"
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+@pytest.fixture(scope="session")
+def engine():
+    engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    yield engine
+    Base.metadata.drop_all(engine)
 
-
-def apply_migrations():
-    alembic_cfg = Config("alembic.ini")
-    alembic_cfg.set_main_option("sqlalchemy.url", SQLALCHEMY_DATABASE_URL)
-    command.upgrade(alembic_cfg, "head")
-
-
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-app.dependency_overrides[get_db] = override_get_db
-
-
-from sqlalchemy import inspect
 
 @pytest.fixture(scope="function")
-def client():
-    apply_migrations()
-    inspector = inspect(engine)
-    print("Tabelle presenti nel DB di test:", inspector.get_table_names())
-    with TestClient(app) as c:
-        yield c
+def db_session(engine):
+    """Session di test isolata per ogni test"""
+    connection = engine.connect()
+    transaction = connection.begin()
+    Session = sessionmaker(bind=connection)
+    session = Session()
+    yield session
+    session.close()
+    transaction.rollback()
+    connection.close()

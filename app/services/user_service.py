@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 from typing import Iterable
-from sqlalchemy.orm import Session
+
 from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 
@@ -56,12 +58,14 @@ def upsert_user_from_event(db: Session, event_body: str) -> None:
             id=user_data["id"],
             username=user_data.get("username", ""),
             email=user_data.get("email", ""),
-            full_name=user_data.get("full_name"),
+            name=user_data.get("name", ""),
+            surname=user_data.get("surname", "")
         )
         db.add(user)
     else:
         user.username = user_data.get("username", user.username)
         user.email = user_data.get("email", user.email)
-        user.full_name = user_data.get("full_name", user.full_name)
+        user.name = user_data.get("name", user.name)
+        user.surname = user_data.get("surname", user.surname)
 
     db.commit()
