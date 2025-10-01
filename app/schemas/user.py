@@ -1,23 +1,26 @@
 from __future__ import annotations
 
 from datetime import datetime
+
 from pydantic import BaseModel, EmailStr
 
 
 class UserBase(BaseModel):
     username: str
     email: EmailStr
-    full_name: str | None = None
+    name: str
+    surname: str
 
 
 class UserCreate(UserBase):
-    pass
+    password: str
 
 
 class UserUpdate(BaseModel):
     username: str | None = None
     email: EmailStr | None = None
-    full_name: str | None = None
+    name: str | None = None
+    surname: str | None = None
 
 
 class UserOut(UserBase):
