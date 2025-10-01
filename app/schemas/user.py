@@ -31,3 +31,9 @@ class UserOut(UserBase):
     model_config = ConfigDict(
         from_attributes=True
     )
+
+class ChangePasswordRequest(BaseModel):
+    user_id: int
+    old_password: str
+    new_password: str
+

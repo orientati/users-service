@@ -69,3 +69,12 @@ def upsert_user_from_event(db: Session, event_body: str) -> None:
         user.surname = user_data.get("surname", user.surname)
 
     db.commit()
+
+
+def change_user_password(db: Session, user_id: int, old_password: str, new_password: str) -> bool:
+    user = db.get(User, user_id)
+    if not user or user.hashed_password != old_password:
+        return False
+    user.hashed_password = new_password
+    db.commit()
+    return True

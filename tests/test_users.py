@@ -135,3 +135,60 @@ def test_list_users_pagination(db_session):
 
     users_page2 = list_users(db_session, limit=3, offset=3)
     assert len(users_page2) == 2  # restanti
+
+
+def test_change_password_success(db_session):
+    # Crea un utente
+    payload = UserCreate(
+        username="pwuser",
+        hashed_password="oldpass",
+        email="pwuser@gaga.com",
+        name="Pw",
+        surname="User"
+    )
+    user = create_user(db_session, payload)
+
+    # Cambia la password
+    from app.schemas.user import ChangePasswordRequest
+    from app.services.user_service import change_user_password
+
+    req = ChangePasswordRequest(
+        user_id=user.id,
+        old_password="oldpass",
+        new_password="newpass"
+    )
+    result = change_user_password(db_session, req.user_id, req.old_password, req.new_password)
+    assert result is True
+
+def test_change_password_wrong_old_password(db_session):
+    payload = UserCreate(
+        username="pwuser2",
+        hashed_password="oldpass2",
+        email="pwuser2@gaga.com",
+        name="Pw2",
+        surname="User2"
+    )
+    user = create_user(db_session, payload)
+
+    from app.schemas.user import ChangePasswordRequest
+    from app.services.user_service import change_user_password
+
+    req = ChangePasswordRequest(
+        user_id=user.id,
+        old_password="wrongpass",
+        new_password="newpass"
+    )
+    result = change_user_password(db_session, req.user_id, req.old_password, req.new_password)
+    assert result is False
+
+def test_change_password_user_not_found(db_session):
+    from app.schemas.user import ChangePasswordRequest
+    from app.services.user_service import change_user_password
+
+    req = ChangePasswordRequest(
+        user_id=99999,
+        old_password="irrelevant",
+        new_password="irrelevant"
+    )
+    result = change_user_password(db_session, req.user_id, req.old_password, req.new_password)
+    assert result is False
