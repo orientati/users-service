@@ -8,11 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
-
+from app.services.http_client import HttpClientException
 
 def list_users(db: Session, limit: int = 50, offset: int = 0) -> Iterable[User]:
-    stmt = select(User).limit(limit).offset(offset)
-    return db.execute(stmt).scalars().all()
+    try:
+        stmt = select(User).limit(limit).offset(offset)
+        return db.execute(stmt).scalars().all()
+    except Exception as e:
+        raise e
 
 
 def get_user(db: Session, user_id: int) -> User | None:
@@ -20,33 +23,42 @@ def get_user(db: Session, user_id: int) -> User | None:
 
 
 def create_user(db: Session, payload: UserCreate) -> User:
-    existing_user = db.query(User).filter_by(email=payload.email).first()
-    if existing_user:
-        raise ValueError("Utente con questa email già esistente.")
+    try:
+        existing_user = db.query(User).filter_by(email=payload.email).first()
+        if existing_user:
+            raise HttpClientException(message="Bad Request", server_message="Email already in use", status_code=400, url="users/")
+        
+        if not payload.email or "@" not in payload.email:
+            raise HttpClientException(message="Bad Request", server_message="Invalid email", status_code=400, url="users/")
 
-    if not payload.email or "@" not in payload.email:
-        raise ValueError("Email non valida.")
+        if not payload.username or len(payload.username) < 3:
+            raise HttpClientException(message="Bad Request", server_message="Username too short", status_code=400, url="users/")
 
-    if not payload.username or len(payload.username) < 3:
-        raise ValueError("Username troppo corto.")
-
-    user = User(**payload.model_dump())
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+        user = User(**payload.model_dump())
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+    except HttpClientException as e:
+        raise e
+    except Exception as e:
+        raise e
 
 
 def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | None:
-    user = db.get(User, user_id)
-    if not user:
-        return None
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(user, field, value)
-    db.commit()
-    db.refresh(user)
-    return user
-
+    try:
+        user = db.get(User, user_id)
+        if not user:
+            raise HttpClientException(message="Not Found", server_message="User not found", status_code=404, url=f"users/{user_id}")
+        for field, value in payload.model_dump(exclude_unset=True).items():
+            setattr(user, field, value)
+        db.commit()
+        db.refresh(user)
+        return user
+    except HttpClientException as e:
+        raise e
+    except Exception as e:
+        raise e
 
 def upsert_user_from_event(db: Session, event_body: str) -> None:
     """
@@ -82,18 +94,24 @@ def upsert_user_from_event(db: Session, event_body: str) -> None:
 
 
 def change_user_password(db: Session, user_id: int, old_password: str, new_password: str) -> bool:
-    user = db.get(User, user_id)
-    if not user or user.hashed_password != old_password:
-        return False
-    user.hashed_password = new_password
-    db.commit()
-    return True
+    try:
+        user = db.get(User, user_id)
+        if not user or user.hashed_password != old_password:
+            return False
+        user.hashed_password = new_password
+        db.commit()
+        return True
+    except Exception as e:
+        raise e
 
 
 def delete_user(db: Session, user_id: int) -> bool:
-    user = db.get(User, user_id)
-    if not user:
-        return False
-    db.delete(user)
-    db.commit()
-    return True
+    try:
+        user = db.get(User, user_id)
+        if not user:
+            return False
+        db.delete(user)
+        db.commit()
+        return True
+    except Exception as e:
+        raise e
