@@ -20,6 +20,16 @@ def get_user(db: Session, user_id: int) -> User | None:
 
 
 def create_user(db: Session, payload: UserCreate) -> User:
+    existing_user = db.query(User).filter_by(email=payload.email).first()
+    if existing_user:
+        raise ValueError("Utente con questa email già esistente.")
+
+    if not payload.email or "@" not in payload.email:
+        raise ValueError("Email non valida.")
+
+    if not payload.username or len(payload.username) < 3:
+        raise ValueError("Username troppo corto.")
+
     user = User(**payload.model_dump())
     db.add(user)
     db.commit()
