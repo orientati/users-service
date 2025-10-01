@@ -38,7 +38,7 @@ def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get
     return user
 
 
-@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/change_password", status_code=status.HTTP_204_NO_CONTENT)
 def api_change_password(
         payload: ChangePasswordRequest,
         db: Session = Depends(get_db)
