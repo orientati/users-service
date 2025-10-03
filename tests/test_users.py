@@ -5,6 +5,7 @@ from app.schemas.user import UserCreate
 from app.schemas.user import UserUpdate
 from app.services.user_service import create_user, get_user, list_users
 from app.services.user_service import update_user
+from app.services.http_client import HttpClientException
 
 
 def test_create_user_success(db_session):
@@ -111,11 +112,12 @@ def test_update_user_success(db_session):
     assert updated.surname == "gagoso"  # unchanged
 
 
+
 def test_update_user_not_found(db_session):
     update_payload = UserUpdate(username="ghost")
-    result = update_user(db_session, 9999, update_payload)
-    assert result is None
-
+    with pytest.raises(HttpClientException) as exc_info:
+        update_user(db_session, 9999, update_payload)
+    assert exc_info.value.status_code == 404
 
 def test_list_users_pagination(db_session):
     # Create multiple users
