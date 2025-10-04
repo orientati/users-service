@@ -1,7 +1,7 @@
 [project]
 name = "users-service"
 version = "0.1.0"
-description = "Template dei servizi FastAPI orientati"
+description = "Servizio di gestione utenti"
 authors = [
     {name = "Federico Zorgnotto",email = "f.zorgnotto.2759@vallauri.edu"}
 ]
