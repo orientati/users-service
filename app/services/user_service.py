@@ -63,8 +63,6 @@ async def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | 
             setattr(user, field, value)
         db.commit()
         db.refresh(user)
-        broker_instance = AsyncBrokerSingleton()
-        connected = await broker_instance.connect()
         await update_services(user, RABBIT_UPDATE_TYPE)
         return user
     except HttpClientException as e:
@@ -82,8 +80,6 @@ async def change_user_password(db: Session, user_id: int, old_password: str, new
         user.hashed_password = new_password
         db.commit()
         db.refresh(user)
-        broker_instance = AsyncBrokerSingleton()
-        connected = await broker_instance.connect()
         await update_services(user, RABBIT_UPDATE_TYPE)
         return True
     except Exception as e:
