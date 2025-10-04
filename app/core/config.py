@@ -5,7 +5,10 @@ class Settings(BaseSettings):
     SERVICE_NAME: str = "Users Service"
     SERVICE_VERSION: str = "0.1.0"
     DATABASE_URL: str = "sqlite:///./database.db"
-    RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
+    RABBITMQ_HOST: str = "localhost"
+    RABBITMQ_PORT: int = 5672
+    RABBITMQ_USER: str = "guest"
+    RABBITMQ_PASS: str = "guest"
     SERVICE_PORT: int = 8000
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
