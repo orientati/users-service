@@ -1,0 +1,13 @@
+services:
+  rabbitmq:
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  users-service-migrate:
+    build: .
+    env_file: .env
+
+  users-service:
+    build: .
+    env_file: .env
