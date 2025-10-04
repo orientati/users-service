@@ -39,9 +39,9 @@ def api_get_user(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail={"message": "Internal Server Error", "stack": "Swiggity Swoggity, U won't find my log", "url": f"users/{user_id}"})
 
 @router.post("/", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
+async def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
     try:
-        return create_user(db, payload)
+        return await create_user(db, payload)
     except HttpClientException as e:
         raise HTTPException(status_code=e.status_code,
                             detail={"message": e.message, "stack": e.server_message, "url": e.url})
@@ -50,9 +50,9 @@ def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.patch("/{user_id}", response_model=UserOut)
-def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)):
+async def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)):
     try:
-        user = update_user(db, user_id, payload)
+        user = await update_user(db, user_id, payload)
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         return user
@@ -65,12 +65,12 @@ def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get
 
 
 @router.post("/change_password", status_code=status.HTTP_204_NO_CONTENT)
-def api_change_password(
+async def api_change_password(
         payload: ChangePasswordRequest,
         db: Session = Depends(get_db)
 ):
     try:
-        success = change_user_password(db, payload.user_id, payload.old_password, payload.new_password)
+        success = await change_user_password(db, payload.user_id, payload.old_password, payload.new_password)
         if not success:
             raise HttpClientException(status_code=400, message="Bad Request", server_message="Old password is incorrect", url=f"users/change-password")
     except HttpClientException as e:
@@ -81,9 +81,9 @@ def api_change_password(
         raise HTTPException(status_code=500, detail={"message": "Internal Server Error", "stack": "Swiggity Swoggity, U won't find my log", "url": f"users/{payload.user_id}/change-password"})
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def api_delete_user(user_id: int, db: Session = Depends(get_db)):
+async def api_delete_user(user_id: int, db: Session = Depends(get_db)):
     try:
-        success = delete_user(db, user_id)
+        success = await delete_user(db, user_id)
         if not success:
             raise HttpClientException(status_code=404, message="Not Found", server_message="User not found", url=f"users/{user_id}")
     except HttpClientException as e:
