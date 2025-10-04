@@ -11,3 +11,7 @@ services:
   users-service:
     build: .
     env_file: .env
+
+  users-service_db:
+    ports:
+      - "5432:5432"
