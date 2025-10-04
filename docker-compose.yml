@@ -6,7 +6,7 @@ services:
       RABBITMQ_DEFAULT_USER: user
       RABBITMQ_DEFAULT_PASS: pass
     networks:
-      - micro_net
+      - rabbit_net
 
 
   users-service-migrate:
@@ -16,7 +16,7 @@ services:
       - users-service_db
     networks:
       - users_service_net
-      - micro_net
+      - rabbit_net
     deploy:
       replicas: 1   # forza una sola istanza
     restart: "no"   # non viene riavviato
@@ -44,7 +44,7 @@ services:
       - users_service_db_data:/var/lib/postgresql/data
     networks:
       - users_service_net
-      - micro_net
+      - rabbit_net
     restart: unless-stopped
 
 volumes:
@@ -52,5 +52,5 @@ volumes:
 
 networks:
   users_service_net:
-  micro_net:
+  rabbit_net:
     driver: bridge
