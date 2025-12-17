@@ -1,38 +1,55 @@
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, clear_mappers
+from unittest.mock import AsyncMock, MagicMock
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
 from app.models.user import User
 
 # Database in-memory per test
-TEST_DATABASE_URL = "sqlite+pysqlite:///:memory:"
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+engine = create_async_engine(
+    TEST_DATABASE_URL, 
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool
+)
+TestingSessionLocal = sessionmaker(
+    bind=engine, 
+    class_=AsyncSession,
+    autocommit=False, 
+    autoflush=False
+)
 
 @pytest.fixture(scope="session")
-def engine():
-    engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    yield engine
-    Base.metadata.drop_all(engine)
+def anyio_backend():
+    return "asyncio"
 
+@pytest.fixture(scope="session")
+async def db_engine():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
 
 @pytest.fixture(scope="function")
-def db_session(engine):
+async def db_session(db_engine):
     """Session di test isolata per ogni test"""
-    connection = engine.connect()
-    transaction = connection.begin()
-    Session = sessionmaker(bind=connection)
-    session = Session()
+    connection = await db_engine.connect()
+    transaction = await connection.begin()
+    
+    session = TestingSessionLocal(bind=connection)
     yield session
-    session.close()
-    transaction.rollback()
-    connection.close()
-
+    
+    await session.close()
+    await transaction.rollback()
+    await connection.close()
 
 @pytest.fixture(autouse=True)
 def mock_broker(monkeypatch):
     """Mock broker integration to avoid real connection attempts"""
-    from unittest.mock import AsyncMock, MagicMock
     
     mock_instance = MagicMock()
     # connect returns True
@@ -44,5 +61,6 @@ def mock_broker(monkeypatch):
     mock_cls = MagicMock(return_value=mock_instance)
     
     monkeypatch.setattr("app.services.broker.AsyncBrokerSingleton", mock_cls)
+    # Also patch where it might be imported
     monkeypatch.setattr("app.services.user_service.AsyncBrokerSingleton", mock_cls)
 
