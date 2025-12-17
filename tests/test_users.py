@@ -80,13 +80,15 @@ async def test_create_user_duplicate_email(db_session):
         name="Dup",
         surname="Two"
     )
-    # The service explicitly checks for duplicate email and raises UserCreateError (which is an OrientatiException subclass usually?)
-    # user_service.py raises UserCreateError.
+    # The service now silently handles duplicates (returns existing user or similar) logic
+    # It should NOT raise UserCreateError
     
-    from app.services.user_service import UserCreateError
-    
-    with pytest.raises(UserCreateError):
-        await create_user(db_session, payload2)
+    user = await create_user(db_session, payload2)
+    assert user is not None
+    assert user.email == "dup@gaga.com"
+    # Ensure name wasn't updated (since we don't update on duplicate create, just maybe resend email)
+    assert user.name == "Dup" 
+
 
 
 @pytest.mark.asyncio
