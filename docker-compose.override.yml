@@ -11,6 +11,8 @@ services:
   users-service:
     build: .
     env_file: .env
+    ports:
+      - "8000:8000"
 
   users-service_db:
     ports:
