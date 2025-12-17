@@ -182,6 +182,13 @@ async def send_verification_email(user: User):
 
             db = next(get_db())
             db_user = db.query(User).filter(User.id == user.id).first()
+            if not db_user:
+                raise OrientatiException(
+                     status_code=404,
+                     message="Not Found",
+                     details={"message": "User not found during verification email generation"},
+                     url=f"users/{user.id}/send_verification_email"
+                 )
             db_user.email_verified = False  # TODO: considerare se controllare se è già verificato
             db_user.verify_email_token = token
             db_user.verify_email_token_expiration = datetime.now() + timedelta(minutes=30)
