@@ -4,9 +4,14 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 
 # Engine e Session asincroni
-database_url = settings.DATABASE_URL
-if database_url.startswith("sqlite://") and "aiosqlite" not in database_url:
+# Gestione URL database per aiosqlite e asyncpg
+database_url = str(settings.DATABASE_URL).strip()
+if "sqlite" in database_url and "aiosqlite" not in database_url:
     database_url = database_url.replace("sqlite://", "sqlite+aiosqlite://")
+
+database_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
+database_url = database_url.replace("postgres://", "postgresql+asyncpg://")
+database_url = database_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
 
 engine = create_async_engine(
     database_url,
