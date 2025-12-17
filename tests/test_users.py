@@ -80,13 +80,15 @@ async def test_create_user_duplicate_email(db_session):
         name="Dup",
         surname="Two"
     )
-    # The service explicitly checks for duplicate email and raises UserCreateError (which is an OrientatiException subclass usually?)
-    # user_service.py raises UserCreateError.
+    # The service now silently handles duplicates (returns existing user or similar) logic
+    # It should NOT raise UserCreateError
     
-    from app.services.user_service import UserCreateError
-    
-    with pytest.raises(UserCreateError):
-        await create_user(db_session, payload2)
+    user = await create_user(db_session, payload2)
+    assert user is not None
+    assert user.email == "dup@gaga.com"
+    # Ensure name wasn't updated (since we don't update on duplicate create, just maybe resend email)
+    assert user.name == "Dup" 
+
 
 
 @pytest.mark.asyncio
@@ -101,13 +103,17 @@ async def test_update_user_success(db_session):
     user = await create_user(db_session, payload)
 
     # Update user
+    # Update user - email should NOT be updateable via this payload anymore
+    # The schema doesn't have email, so usually pydantic ignores it or errors if we pass it depending on config.
+    # Assuming standard behavior, we pass valid fields.
     update_payload = UserUpdate(
-        email="super@gaga.com",
         name="superadmin"
     )
+    # If we tried to pass email="...", it would be ignored or error. Let's stick to valid usage.
+    
     updated = await update_user(db_session, user.id, update_payload)
 
-    assert updated.email == "super@gaga.com"
+    assert updated.email == "gaga@gaga.com" # Should remain unchanged
     assert updated.name == "superadmin"
     assert updated.surname == "gagoso"  # unchanged
 

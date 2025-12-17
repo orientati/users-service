@@ -56,23 +56,18 @@ async def create_user(db: Session, payload: UserCreate) -> User:
     try:
         existing_user = db.query(User).filter_by(email=payload.email).first()
         if existing_user:
-            raise UserCreateError(
-                message="Email already in use",
-                error_type=UserCreateErrorType.EMAIL_TAKEN.value,
-            )
+            if not existing_user.email_verified:
+                await send_verification_email(existing_user, db)
+            return existing_user
 
-        if not payload.email or "@" not in payload.email:
-            raise UserCreateError(
-                message="Invalid email format",
-                error_type=UserCreateErrorType.INVALID_EMAIL.value,
-            )
+
 
         user = User(**payload.model_dump())
         db.add(user)
         db.commit()
         db.refresh(user)
         await update_services(user, RABBIT_CREATE_TYPE)
-        await send_verification_email(user)
+        await send_verification_email(user, db)
         return user
     except UserCreateError as e:
         raise e
@@ -164,7 +159,7 @@ async def update_services(user: User, operation: str):
         raise e
 
 
-async def send_verification_email(user: User):
+async def send_verification_email(user: User, db: Session):
     try:
         broker_instance = AsyncBrokerSingleton()
         connected = await broker_instance.connect()
@@ -180,7 +175,6 @@ async def send_verification_email(user: User):
                 }
             }
 
-            db = next(get_db())
             db_user = db.query(User).filter(User.id == user.id).first()
             if not db_user:
                 raise OrientatiException(
@@ -203,24 +197,7 @@ async def send_verification_email(user: User):
         raise e
 
 
-async def request_email_verification(user_id: int, db: Session):
-    try:
-        user = get_user(db, user_id)
-        if not user:
-            raise OrientatiException(
-                status_code=404,
-                message="Not Found",
-                details={"message": "User not found"},
-                url=f"users/{user_id}/request_email_verification"
-            )
-        await send_verification_email(user)
-    except OrientatiException as e:
-        raise e
-    except Exception as e:
-        raise OrientatiException(
-            exc=e,
-            url=f"users/{user_id}/request_email_verification",
-        )
+
 
 
 async def verify_email(token: str):

@@ -13,7 +13,7 @@ from app.core.logging import get_logger
 from app.schemas.user import UserOut, UserCreate, UserUpdate, ChangePasswordRequest
 from app.services.http_client import OrientatiException
 from app.services.user_service import list_users, get_user, create_user, update_user, change_user_password, delete_user, \
-    request_email_verification, verify_email
+    verify_email
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -57,10 +57,11 @@ async def api_get_user(user_id: int, db: Session = Depends(get_db)):
         )
 
 
-@router.post("/", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_202_ACCEPTED)
 async def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
     try:
-        return await create_user(db, payload)
+        await create_user(db, payload)
+        return {"message": "Registration successful. Please check your email to verify your account."}
     except OrientatiException as e:
         return JSONResponse(
             status_code=e.status_code,
@@ -142,22 +143,7 @@ async def api_delete_user(user_id: int, db: Session = Depends(get_db)):
         )
 
 
-@router.post("/request_email_verification", status_code=status.HTTP_204_NO_CONTENT)
-async def api_request_email_verification(
-        user_id: int = Body(..., embed=True),
-        db: Session = Depends(get_db)
-):
-    try:
-        await request_email_verification(user_id, db)
-    except OrientatiException as e:
-        return JSONResponse(
-            status_code=e.status_code,
-            content={
-                "message": e.message,
-                "details": e.details,
-                "url": e.url
-            }
-        )
+
 
 
 @router.post("/verify_email", status_code=status.HTTP_204_NO_CONTENT)
