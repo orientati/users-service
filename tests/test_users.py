@@ -103,13 +103,17 @@ async def test_update_user_success(db_session):
     user = await create_user(db_session, payload)
 
     # Update user
+    # Update user - email should NOT be updateable via this payload anymore
+    # The schema doesn't have email, so usually pydantic ignores it or errors if we pass it depending on config.
+    # Assuming standard behavior, we pass valid fields.
     update_payload = UserUpdate(
-        email="super@gaga.com",
         name="superadmin"
     )
+    # If we tried to pass email="...", it would be ignored or error. Let's stick to valid usage.
+    
     updated = await update_user(db_session, user.id, update_payload)
 
-    assert updated.email == "super@gaga.com"
+    assert updated.email == "gaga@gaga.com" # Should remain unchanged
     assert updated.name == "superadmin"
     assert updated.surname == "gagoso"  # unchanged
 
