@@ -190,7 +190,7 @@ async def send_verification_email(user: User, db: AsyncSession):
                  )
             db_user.email_verified = False  # TODO: considerare se controllare se è già verificato
             db_user.verify_email_token = token
-            db_user.verify_email_token_expiration = datetime.now() + timedelta(minutes=30)
+            db_user.verify_email_token_expiration = datetime.now(timezone.utc) + timedelta(minutes=30)
             await db.commit()
             await db.refresh(db_user)
             await update_services(db_user, RABBIT_UPDATE_TYPE)
@@ -225,7 +225,7 @@ async def verify_email(token: str, db: AsyncSession):
 
         # Ensure datetime is timezone aware if needed, or consistent with stored time
         # Here we assume token expiration check logic matches original intent
-        if user.verify_email_token_expiration and user.verify_email_token_expiration < datetime.now():
+        if user.verify_email_token_expiration and user.verify_email_token_expiration < datetime.now(timezone.utc):
             raise OrientatiException(
                 status_code=400,
                 message="Bad Request",
