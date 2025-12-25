@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, Depends, status
 from fastapi import APIRouter, Depends, status, Body
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.core.logging import get_logger
@@ -20,9 +18,9 @@ router = APIRouter()
 
 
 @router.get("/", response_model=List[UserOut])
-def api_list_users(limit: int = 50, offset: int = 0, db: Session = Depends(get_db)):
+async def api_list_users(limit: int = 50, offset: int = 0, db: AsyncSession = Depends(get_db)):
     try:
-        return list_users(db, limit=limit, offset=offset)
+        return await list_users(db, limit=limit, offset=offset)
     except OrientatiException as e:
         return JSONResponse(
             status_code=e.status_code,
@@ -35,9 +33,9 @@ def api_list_users(limit: int = 50, offset: int = 0, db: Session = Depends(get_d
 
 
 @router.get("/{user_id}", response_model=UserOut)
-async def api_get_user(user_id: int, db: Session = Depends(get_db)):
+async def api_get_user(user_id: int, db: AsyncSession = Depends(get_db)):
     try:
-        user = get_user(db, user_id)
+        user = await get_user(db, user_id)
         if not user:
             raise OrientatiException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -58,7 +56,7 @@ async def api_get_user(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", status_code=status.HTTP_202_ACCEPTED)
-async def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
+async def api_create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)):
     try:
         await create_user(db, payload)
         return {"message": "Registration successful. Please check your email to verify your account."}
@@ -74,7 +72,7 @@ async def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.patch("/{user_id}", response_model=UserOut)
-async def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)):
+async def api_update_user(user_id: int, payload: UserUpdate, db: AsyncSession = Depends(get_db)):
     try:
         user = await update_user(db, user_id, payload)
         if not user:
@@ -99,7 +97,7 @@ async def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depen
 @router.post("/change_password", status_code=status.HTTP_204_NO_CONTENT)
 async def api_change_password(
         payload: ChangePasswordRequest,
-        db: Session = Depends(get_db)
+        db: AsyncSession = Depends(get_db)
 ):
     try:
         success = await change_user_password(db, payload.user_id, payload.old_password, payload.new_password)
@@ -122,7 +120,7 @@ async def api_change_password(
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def api_delete_user(user_id: int, db: Session = Depends(get_db)):
+async def api_delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
     try:
         success = await delete_user(db, user_id)
         if not success:
@@ -143,13 +141,10 @@ async def api_delete_user(user_id: int, db: Session = Depends(get_db)):
         )
 
 
-
-
-
 @router.post("/verify_email", status_code=status.HTTP_204_NO_CONTENT)
-async def api_verify_email(token: str = Body(..., embed=True)):
+async def api_verify_email(token: str = Body(..., embed=True), db: AsyncSession = Depends(get_db)):
     try:
-        await verify_email(token)
+        await verify_email(token, db)
     except OrientatiException as e:
         return JSONResponse(
             status_code=e.status_code,

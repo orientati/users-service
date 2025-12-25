@@ -3,10 +3,10 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.core.config import settings
@@ -37,10 +37,11 @@ class UserCreateError(OrientatiException):
         }, "/users/create")
 
 
-def list_users(db: Session, limit: int = 50, offset: int = 0) -> Iterable[User]:
+async def list_users(db: AsyncSession, limit: int = 50, offset: int = 0) -> Sequence[User]:
     try:
         stmt = select(User).limit(limit).offset(offset)
-        return db.execute(stmt).scalars().all()
+        result = await db.execute(stmt)
+        return result.scalars().all()
     except Exception as e:
         raise OrientatiException(
             exc=e,
@@ -48,24 +49,25 @@ def list_users(db: Session, limit: int = 50, offset: int = 0) -> Iterable[User]:
         )
 
 
-def get_user(db: Session, user_id: int) -> User | None:
-    return db.get(User, user_id)
+async def get_user(db: AsyncSession, user_id: int) -> User | None:
+    return await db.get(User, user_id)
 
 
-async def create_user(db: Session, payload: UserCreate) -> User:
+async def create_user(db: AsyncSession, payload: UserCreate) -> User:
     try:
-        existing_user = db.query(User).filter_by(email=payload.email).first()
+        stmt = select(User).filter_by(email=payload.email)
+        result = await db.execute(stmt)
+        existing_user = result.scalars().first()
+        
         if existing_user:
             if not existing_user.email_verified:
                 await send_verification_email(existing_user, db)
             return existing_user
 
-
-
         user = User(**payload.model_dump())
         db.add(user)
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
         await update_services(user, RABBIT_CREATE_TYPE)
         await send_verification_email(user, db)
         return user
@@ -78,9 +80,9 @@ async def create_user(db: Session, payload: UserCreate) -> User:
         )
 
 
-async def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | None:
+async def update_user(db: AsyncSession, user_id: int, payload: UserUpdate) -> User | None:
     try:
-        user = db.get(User, user_id)
+        user = await db.get(User, user_id)
         if not user:
             raise OrientatiException(
                 status_code=404,
@@ -90,8 +92,8 @@ async def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | 
             )
         for field, value in payload.model_dump(exclude_unset=True).items():
             setattr(user, field, value)
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
         await update_services(user, RABBIT_UPDATE_TYPE)
         return user
     except OrientatiException as e:
@@ -103,14 +105,14 @@ async def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | 
         )
 
 
-async def change_user_password(db: Session, user_id: int, old_password: str, new_password: str) -> bool:
+async def change_user_password(db: AsyncSession, user_id: int, old_password: str, new_password: str) -> bool:
     try:
-        user = db.get(User, user_id)
+        user = await db.get(User, user_id)
         if not user or user.hashed_password != old_password:
             return False
         user.hashed_password = new_password
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
         await update_services(user, RABBIT_UPDATE_TYPE)
         return True
     except Exception as e:
@@ -120,13 +122,13 @@ async def change_user_password(db: Session, user_id: int, old_password: str, new
         )
 
 
-async def delete_user(db: Session, user_id: int) -> bool:
+async def delete_user(db: AsyncSession, user_id: int) -> bool:
     try:
-        user = db.get(User, user_id)
+        user = await db.get(User, user_id)
         if not user:
             return False
-        db.delete(user)
-        db.commit()
+        await db.delete(user)
+        await db.commit()
         await update_services(user, RABBIT_DELETE_TYPE)
         return True
     except Exception as e:
@@ -159,7 +161,7 @@ async def update_services(user: User, operation: str):
         raise e
 
 
-async def send_verification_email(user: User, db: Session):
+async def send_verification_email(user: User, db: AsyncSession):
     try:
         broker_instance = AsyncBrokerSingleton()
         connected = await broker_instance.connect()
@@ -175,7 +177,10 @@ async def send_verification_email(user: User, db: Session):
                 }
             }
 
-            db_user = db.query(User).filter(User.id == user.id).first()
+            stmt = select(User).where(User.id == user.id)
+            result = await db.execute(stmt)
+            db_user = result.scalars().first()
+            
             if not db_user:
                 raise OrientatiException(
                      status_code=404,
@@ -185,8 +190,9 @@ async def send_verification_email(user: User, db: Session):
                  )
             db_user.email_verified = False  # TODO: considerare se controllare se è già verificato
             db_user.verify_email_token = token
-            db_user.verify_email_token_expiration = datetime.now() + timedelta(minutes=30)
-            db.commit()
+            db_user.verify_email_token_expiration = datetime.now(timezone.utc) + timedelta(minutes=30)
+            await db.commit()
+            await db.refresh(db_user)
             await update_services(db_user, RABBIT_UPDATE_TYPE)
             await broker_instance.publish_message("email", "email_notification", email_request,
                                                   routing_key="send_email")
@@ -197,18 +203,18 @@ async def send_verification_email(user: User, db: Session):
         raise e
 
 
-
-
-
-async def verify_email(token: str):
+async def verify_email(token: str, db: AsyncSession):
     """
     Verifica l'email dell'utente tramite il token passato
     :param token:
+    :param db:
     :return: stato verifica
     """
     try:
-        db = next(get_db())
-        user = db.query(User).filter(User.verify_email_token == token).first()
+        stmt = select(User).where(User.verify_email_token == token)
+        result = await db.execute(stmt)
+        user = result.scalars().first()
+        
         if not user:
             raise OrientatiException(
                 status_code=404,
@@ -217,7 +223,9 @@ async def verify_email(token: str):
                 url="users/verify_email"
             )
 
-        if user.verify_email_token_expiration < datetime.now(timezone.utc):
+        # Ensure datetime is timezone aware if needed, or consistent with stored time
+        # Here we assume token expiration check logic matches original intent
+        if user.verify_email_token_expiration and user.verify_email_token_expiration < datetime.now(timezone.utc):
             raise OrientatiException(
                 status_code=400,
                 message="Bad Request",
@@ -227,8 +235,8 @@ async def verify_email(token: str):
         user.email_verified = True
         user.verify_email_token = None
         user.verify_email_token_expiration = None
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
         await update_services(user, RABBIT_UPDATE_TYPE)
         return True
     except OrientatiException as e:

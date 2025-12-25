@@ -22,7 +22,8 @@ dependencies = [
     "asyncpg (>=0.30.0,<0.31.0)",
     "gunicorn (>=23.0.0,<24.0.0)",
     "aio-pika (>=9.5.7,<10.0.0)",
-    "passlib[argon2] (>=1.7.4,<2.0.0)"
+    "passlib[argon2] (>=1.7.4,<2.0.0)",
+    "aiosqlite (>=0.22.0,<0.23.0)"
 ]
 
 [build-system]
