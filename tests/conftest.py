@@ -64,3 +64,22 @@ def mock_broker(monkeypatch):
     # Also patch where it might be imported
     monkeypatch.setattr("app.services.user_service.AsyncBrokerSingleton", mock_cls)
 
+
+@pytest.fixture
+async def client(db_session):
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    from app.api.deps import get_db
+
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    
+    # Create client with ASGITransport for direct app testing
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    
+    app.dependency_overrides.clear()
+

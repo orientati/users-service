@@ -21,7 +21,7 @@ async def test_create_user_success(db_session):
     assert user.email == "admin@gaga.com"
     assert user.name == "Admin"
 
-    fetched = get_user(db_session, user.id)
+    fetched = await get_user(db_session, user.id)
     assert fetched.email == "admin@gaga.com"
 
 
@@ -37,7 +37,7 @@ async def test_create_user_multiple(db_session):
         payload = UserCreate(**data)
         await create_user(db_session, payload)
 
-    users = list_users(db_session)
+    users = await list_users(db_session)
     assert len(users) == 3
     assert users[0].email == "user1@gaga.com"
     assert users[2].email == "user3@gaga.com"
@@ -139,11 +139,11 @@ async def test_list_users_pagination(db_session):
         )
         await create_user(db_session, payload)
 
-    users = list_users(db_session, limit=3, offset=0)
+    users = await list_users(db_session, limit=3, offset=0)
     assert len(users) == 3
     assert users[0].email == "user0@gaga.com"
 
-    users_page2 = list_users(db_session, limit=3, offset=3)
+    users_page2 = await list_users(db_session, limit=3, offset=3)
     assert len(users_page2) == 2  # restanti
 
 
@@ -221,7 +221,7 @@ async def test_delete_user_success(db_session):
     from app.services.user_service import delete_user, get_user
     result = await delete_user(db_session, user.id)
     assert result is True
-    assert get_user(db_session, user.id) is None
+    assert await get_user(db_session, user.id) is None
 
 
 @pytest.mark.asyncio
