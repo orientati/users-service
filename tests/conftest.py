@@ -61,8 +61,6 @@ def mock_broker(monkeypatch):
     mock_cls = MagicMock(return_value=mock_instance)
     
     monkeypatch.setattr("app.services.broker.AsyncBrokerSingleton", mock_cls)
-    # Also patch where it might be imported
-    monkeypatch.setattr("app.services.user_service.AsyncBrokerSingleton", mock_cls)
 
 
 @pytest.fixture

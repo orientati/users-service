@@ -61,10 +61,13 @@ async def create_user(db: AsyncSession, payload: UserCreate) -> User:
         if existing_user:
             if not existing_user.email_verified:
                 await send_verification_email(existing_user, db)
+                await db.commit()
+                await db.refresh(existing_user)
             return existing_user
 
         user = User(**payload.model_dump())
         db.add(user)
+        await db.flush()
         await update_services(user, RABBIT_CREATE_TYPE, db)
         await send_verification_email(user, db)
         await db.commit()

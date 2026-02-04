@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
-from app.db.session import async_session_maker
+from app.db.session import AsyncSessionLocal
 from app.models.outbox import OutboxMessage
 from app.services.broker import AsyncBrokerSingleton
 
@@ -71,7 +71,7 @@ class OutboxWorker:
 
     async def _process_pending_messages(self):
         """Process all pending outbox messages."""
-        async with async_session_maker() as session:
+        async with AsyncSessionLocal() as session:
             # Get pending messages ordered by creation time
             stmt = select(OutboxMessage).where(
                 OutboxMessage.attempts < self.max_retries
@@ -92,11 +92,12 @@ class OutboxWorker:
                 return
             
             for message in messages:
+                message_id = message.id
                 try:
                     await self._send_message(session, message)
                 except Exception as e:
-                    logger.error(f"Failed to send outbox message {message.id}: {e}", exc_info=True)
-                    await self._mark_failed(session, message, str(e))
+                    logger.error(f"Failed to send outbox message {message_id}: {e}", exc_info=True)
+                    await self._mark_failed(session, message_id, str(e))
 
     async def _send_message(self, session: AsyncSession, message: OutboxMessage):
         """Send a single outbox message to RabbitMQ."""
@@ -125,19 +126,28 @@ class OutboxWorker:
             await session.rollback()
             raise e
 
-    async def _mark_failed(self, session: AsyncSession, message: OutboxMessage, error: str):
+    async def _mark_failed(self, session: AsyncSession, message_id: int, error: str):
         """Mark a message as failed and increment retry counter."""
         try:
-            message.attempts += 1
-            message.last_error = error[:1000]  # Truncate error to avoid overflow
+            # Re-fetch message as the previous instance might be detached/stale
+            stmt = select(OutboxMessage).where(OutboxMessage.id == message_id)
+            result = await session.execute(stmt)
+            fresh_message = result.scalar_one_or_none()
             
-            if message.attempts >= self.max_retries:
-                logger.error(
-                    f"Outbox message {message.id} exceeded max retries ({self.max_retries}), "
-                    f"giving up. Last error: {error}"
-                )
-            
-            await session.commit()
+            if fresh_message:
+                fresh_message.attempts += 1
+                fresh_message.last_error = error[:1000]  # Truncate error to avoid overflow
+                
+                if fresh_message.attempts >= self.max_retries:
+                    logger.error(
+                        f"Outbox message {fresh_message.id} exceeded max retries ({self.max_retries}), "
+                        f"giving up. Last error: {error}"
+                    )
+                
+                await session.commit()
+            else:
+                 logger.warning(f"Could not find message {message_id} to mark as failed")
+
         except Exception as e:
-            logger.error(f"Failed to mark message {message.id} as failed: {e}", exc_info=True)
+            logger.error(f"Failed to mark message {message_id} as failed: {e}", exc_info=True)
             await session.rollback()
