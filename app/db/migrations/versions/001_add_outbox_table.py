@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'add_outbox_table'
-down_revision: Union[str, None] = None
+down_revision: Union[str, None] = '22cf6733dcd2'
 head_label: str = 'head'
 depends_on: Union[str, None] = None
 
