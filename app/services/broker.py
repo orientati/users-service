@@ -47,6 +47,9 @@ class AsyncBrokerSingleton:
         Args:
             retries (int): Numero massimo di tentativi di connessione (default: 5).
             delay (int): Intervallo di attesa in secondi tra i tentativi (default: 5).
+        
+        Returns:
+            bool: True se connessione riuscita, False altrimenti
         """
         if self.connection and not self.connection.is_closed:
             return True
@@ -71,7 +74,7 @@ class AsyncBrokerSingleton:
                     await asyncio.sleep(delay)
                 else:
                     logger.error(f"Failed to connect to RabbitMQ after {retries} attempts: {e}")
-                    raise e
+                    return False
         return False
 
     async def subscribe(self, exchange_name, callback, *, ex_type="direct", routing_key=""):
