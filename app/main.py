@@ -16,6 +16,7 @@ sentry_sdk.init(
     send_default_pii=True,
     release=settings.SENTRY_RELEASE,
 )
+sentry_sdk.set_tag("service.name", settings.SERVICE_NAME)
 
 
 @asynccontextmanager
