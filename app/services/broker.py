@@ -41,25 +41,38 @@ class AsyncBrokerSingleton:
             self.consumer_tags = {}
             self.initialized = True
 
-    async def connect(self):
-        """Stabilisce una connessione asincrona a RabbitMQ."""
-        try:
-            if self.connection and not self.connection.is_closed:
-                return True
+    async def connect(self, retries=5, delay=5):
+        """Stabilisce una connessione asincrona a RabbitMQ con retry robusti.
 
-            self.connection = await aio_pika.connect_robust(
-                host=settings.RABBITMQ_HOST,
-                port=settings.RABBITMQ_PORT,
-                login=settings.RABBITMQ_USER,
-                password=settings.RABBITMQ_PASS
-            )
-            self.channel = await self.connection.channel()
-            logger.info("Connected to RabbitMQ (aio-pika)")
-
+        Args:
+            retries (int): Numero massimo di tentativi di connessione (default: 5).
+            delay (int): Intervallo di attesa in secondi tra i tentativi (default: 5).
+        """
+        if self.connection and not self.connection.is_closed:
             return True
-        except Exception as e:
-            logger.error(f"Failed to connect to RabbitMQ: {e}")
-            return False
+
+        for attempt in range(1, retries + 1):
+            try:
+                self.connection = await aio_pika.connect_robust(
+                    host=settings.RABBITMQ_HOST,
+                    port=settings.RABBITMQ_PORT,
+                    login=settings.RABBITMQ_USER,
+                    password=settings.RABBITMQ_PASS
+                )
+                self.channel = await self.connection.channel()
+                logger.info("Connected to RabbitMQ (aio-pika)")
+                return True
+            except Exception as e:
+                if attempt < retries:
+                    logger.warning(
+                        f"Connection attempt {attempt}/{retries} failed: {e}. "
+                        f"Retrying in {delay} seconds..."
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"Failed to connect to RabbitMQ after {retries} attempts: {e}")
+                    raise e
+        return False
 
     async def subscribe(self, exchange_name, callback, *, ex_type="direct", routing_key=""):
         """Sottoscrive a un exchange RabbitMQ con una callback specifica (asincrono).
