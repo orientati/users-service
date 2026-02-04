@@ -21,8 +21,22 @@ sentry_sdk.set_tag("service.name", settings.SERVICE_NAME)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.core.logging import get_logger
+    from app.services.outbox_worker import OutboxWorker
+    
     setup_logging()
+    logger = get_logger(__name__)
+    
+    # Start outbox worker for transactional outbox pattern
+    outbox_worker = OutboxWorker(poll_interval=5, max_retries=10)
+    await outbox_worker.start()
+    logger.info("Users service started with outbox worker")
+    
     yield
+    
+    # Stop outbox worker gracefully
+    await outbox_worker.stop()
+    logger.info("Users service shutting down")
 
 
 app = FastAPI(

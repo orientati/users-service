@@ -13,7 +13,6 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
-from app.services.broker import AsyncBrokerSingleton
 from app.services.http_client import OrientatiException
 
 logger = get_logger(__name__)
@@ -66,10 +65,10 @@ async def create_user(db: AsyncSession, payload: UserCreate) -> User:
 
         user = User(**payload.model_dump())
         db.add(user)
+        await update_services(user, RABBIT_CREATE_TYPE, db)
+        await send_verification_email(user, db)
         await db.commit()
         await db.refresh(user)
-        await update_services(user, RABBIT_CREATE_TYPE)
-        await send_verification_email(user, db)
         return user
     except UserCreateError as e:
         raise e
@@ -92,9 +91,9 @@ async def update_user(db: AsyncSession, user_id: int, payload: UserUpdate) -> Us
             )
         for field, value in payload.model_dump(exclude_unset=True).items():
             setattr(user, field, value)
+        await update_services(user, RABBIT_UPDATE_TYPE, db)
         await db.commit()
         await db.refresh(user)
-        await update_services(user, RABBIT_UPDATE_TYPE)
         return user
     except OrientatiException as e:
         raise e
@@ -111,9 +110,9 @@ async def change_user_password(db: AsyncSession, user_id: int, old_password: str
         if not user or user.hashed_password != old_password:
             return False
         user.hashed_password = new_password
+        await update_services(user, RABBIT_UPDATE_TYPE, db)
         await db.commit()
         await db.refresh(user)
-        await update_services(user, RABBIT_UPDATE_TYPE)
         return True
     except Exception as e:
         raise OrientatiException(
@@ -127,9 +126,9 @@ async def delete_user(db: AsyncSession, user_id: int) -> bool:
         user = await db.get(User, user_id)
         if not user:
             return False
+        await update_services(user, RABBIT_DELETE_TYPE, db)
         await db.delete(user)
         await db.commit()
-        await update_services(user, RABBIT_DELETE_TYPE)
         return True
     except Exception as e:
         raise OrientatiException(
@@ -138,68 +137,100 @@ async def delete_user(db: AsyncSession, user_id: int) -> bool:
         )
 
 
-async def update_services(user: User, operation: str):
+async def update_services(user: User, operation: str, db: AsyncSession):
+    """Write message to outbox for eventual delivery to other services.
+    
+    Args:
+        user: User object
+        operation: Operation type (CREATE, UPDATE, DELETE)
+        db: Database session - MUST be the same session as the user operation for atomicity
+    """
     try:
-        broker_instance = AsyncBrokerSingleton()
-        connected = await broker_instance.connect()
-        if connected:
-            message = {
-                "id": user.id,
-                "email": user.email,
-                "email_verified": user.email_verified,
-                "name": user.name,
-                "surname": user.surname,
-                "hashed_password": user.hashed_password,
-                "created_at": str(user.created_at),
-                "updated_at": str(user.updated_at)
-            } if operation != RABBIT_DELETE_TYPE else {"id": user.id}
-            await broker_instance.publish_message("users", operation, message)
-        else:
-            logger.warning("Could not connect to broker.")
+        from app.models.outbox import OutboxMessage
+        import json
+        
+        message_payload = {
+            "id": user.id,
+            "email": user.email,
+            "email_verified": user.email_verified,
+            "name": user.name,
+            "surname": user.surname,
+            "hashed_password": user.hashed_password,
+            "created_at": str(user.created_at),
+            "updated_at": str(user.updated_at)
+        } if operation != RABBIT_DELETE_TYPE else {"id": user.id}
+        
+        outbox_message = OutboxMessage(
+            exchange_name="users",
+            message_type=operation,
+            routing_key="",
+            payload=json.dumps(message_payload)
+        )
+        
+        db.add(outbox_message)
+        # Note: commit will be done by caller as part of the same transaction
+        
+        logger.info(f"Added outbox message for user {user.id}, operation: {operation}")
+        
     except Exception as e:
-        logger.error(f"Error updating services for user {user.id}. Operation: {operation}: {e}")
+        logger.error(f"Error adding outbox message for user {user.id}. Operation: {operation}: {e}")
         raise e
 
 
-async def send_verification_email(user: User, db: AsyncSession):
-    try:
-        broker_instance = AsyncBrokerSingleton()
-        connected = await broker_instance.connect()
-        if connected:
-            token = secrets.token_urlsafe(32)
-            email_request = {
-                "to": user.email,
-                "subject": "Verifica il tuo Account Orientati",
-                "template_name": "verify_email_v1",
-                "context": {
-                    "username": f"{user.surname} {user.name}",
-                    "link": f"https://{settings.SERVER_URL}/api/v1/users/verify_email?token={token}"
-                }
-            }
 
-            stmt = select(User).where(User.id == user.id)
-            result = await db.execute(stmt)
-            db_user = result.scalars().first()
-            
-            if not db_user:
-                raise OrientatiException(
-                     status_code=404,
-                     message="Not Found",
-                     details={"message": "User not found during verification email generation"},
-                     url=f"users/{user.id}/send_verification_email"
-                 )
-            db_user.email_verified = False  # TODO: considerare se controllare se è già verificato
-            db_user.verify_email_token = token
-            db_user.verify_email_token_expiration = datetime.now(timezone.utc) + timedelta(minutes=30)
-            await db.commit()
-            await db.refresh(db_user)
-            await update_services(db_user, RABBIT_UPDATE_TYPE)
-            await broker_instance.publish_message("email", "email_notification", email_request,
-                                                  routing_key="send_email")
-        else:
-            logger.warning("Could not connect to broker.")
+async def send_verification_email(user: User, db: AsyncSession):
+    """Send verification email by writing to outbox for transactional delivery.
+    
+    Args:
+        user: User object
+        db: Database session - MUST be the same session as the user operation for atomicity
+    """
+    try:
+        from app.models.outbox import OutboxMessage
+        import json
+        
+        token = secrets.token_urlsafe(32)
+        email_request = {
+            "to": user.email,
+            "subject": "Verifica il tuo Account Orientati",
+            "template_name": "verify_email_v1",
+            "context": {
+                "username": f"{user.surname} {user.name}",
+                "link": f"https://{settings.SERVER_URL}/api/v1/users/verify_email?token={token}"
+            }
+        }
+
+        stmt = select(User).where(User.id == user.id)
+        result = await db.execute(stmt)
+        db_user = result.scalars().first()
+        
+        if not db_user:
+            raise OrientatiException(
+                 status_code=404,
+                 message="Not Found",
+                 details={"message": "User not found during verification email generation"},
+                 url=f"users/{user.id}/send_verification_email"
+             )
+        
+        # Update user with verification token
+        db_user.email_verified = False
+        db_user.verify_email_token = token
+        db_user.verify_email_token_expiration = datetime.now(timezone.utc) + timedelta(minutes=30)
+        
+        # Write to outbox for eventual delivery
+        outbox_message = OutboxMessage(
+            exchange_name="email",
+            message_type="email_notification",
+            routing_key="send_email",
+            payload=json.dumps(email_request)
+        )
+        db.add(outbox_message)
+        
+        # Note: commit will be done by caller as part of the same transaction
+        logger.info(f"Added verification email to outbox for user {user.id}")
+        
     except Exception as e:
-        logger.error(f"Error sending verification email for user {user.id}: {e}")
+        logger.error(f"Error adding verification email to outbox for user {user.id}: {e}")
         raise e
 
 
@@ -235,9 +266,9 @@ async def verify_email(token: str, db: AsyncSession):
         user.email_verified = True
         user.verify_email_token = None
         user.verify_email_token_expiration = None
+        await update_services(user, RABBIT_UPDATE_TYPE, db)
         await db.commit()
         await db.refresh(user)
-        await update_services(user, RABBIT_UPDATE_TYPE)
         return True
     except OrientatiException as e:
         raise e
